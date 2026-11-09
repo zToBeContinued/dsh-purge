@@ -81,7 +81,12 @@ test('real Windows PowerShell: locked archive retries, timeout and changed archi
  try {
   await until(()=>fs.existsSync(ready));
   helper=spawn(powershell,['-NoProfile','-File',ps,'-ExePath',path.join(f.root,'none.exe'),'-AsarPath',f.asar,'-StatePath',state,'-Token','locked','-TimeoutSeconds','1','-PollMilliseconds','100'],{stdio:'ignore'});
-  await until(()=>readWindowsAsarHandoff(f.asar)?.phase==='expired');assert.equal(fs.readFileSync(f.asar,'utf8'),'original archive');assert.match(fs.readFileSync(state+'.log','utf8'),/waiting_for_unlock/);
+  await until(()=>readWindowsAsarHandoff(f.asar)?.phase==='expired');
+  // Save-State publishes JSON before appending its log. A terminal phase is
+  // not proof that PowerShell has closed the log handle (Windows sharing lock).
+  await until(()=>helper.exitCode!==null || helper.signalCode!==null);
+  assert.equal(helper.exitCode,2,'expired helper must finish with its timeout exit code');
+  assert.equal(fs.readFileSync(f.asar,'utf8'),'original archive');assert.match(fs.readFileSync(state+'.log','utf8'),/waiting_for_unlock/);
   locker.kill();helper.kill();await wait(300);
   // Keep a known executable alive so we can replace the archive between ready
   // and quit, simulating an official update during the handoff window.
@@ -90,4 +95,17 @@ test('real Windows PowerShell: locked archive retries, timeout and changed archi
   try {await until(()=>fs.existsSync(holderReady));await until(()=>readWindowsAsarHandoff(f.asar)?.phase==='waiting_for_quit');fs.writeFileSync(f.asar,'new official archive');holder.kill();await until(()=>readWindowsAsarHandoff(f.asar)?.phase==='failed');assert.match(readWindowsAsarHandoff(f.asar).detail,/Archive changed/);assert.equal(fs.readFileSync(f.asar,'utf8'),'new official archive');}
   finally{holder.kill();}
  }finally{locker.kill();helper?.kill();await wait(300);fs.rmSync(f.root,{recursive:true,force:true});}
+});
+
+test('a broker PID alone cannot keep a never-acknowledged attempt pending', () => {
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'handoff-startup-'));
+ try {
+   const asar=path.join(root,'app.asar');
+   fs.writeFileSync(asar,'fixture');
+   for(const updated_at of ['2000-01-01','invalid']){
+     fs.writeFileSync(asar+'.purge-handoff.json', JSON.stringify({token:'probe',phase:'starting',pid:process.pid,updated_at}));
+     assert.equal(readWindowsAsarHandoff(asar).phase,'helper_stopped');
+   }
+   assert.equal(fs.readFileSync(asar,'utf8'),'fixture');
+ } finally {fs.rmSync(root,{recursive:true,force:true});}
 });

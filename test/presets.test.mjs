@@ -71,17 +71,36 @@ test("the bundled preset parses into a registry definition", () => {
   assert(!ids.includes("redteam-tools"), "red team rows stripped");
 });
 
-test("a plugin-managed preset is updated in place, a user-edited one is kept", () => {
+test("installed unrestricted preset preserves native skill discovery", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "purge-skill-roots-"));
+  try {
+    const { dir } = installPreset({ home });
+    const def = readPresetDefinition("unrestricted", dir);
+    const provider = def.plugins.find((row) => row.id === "skill-filesystem");
+    assert(provider, "filesystem skill provider is registered");
+    assert.equal(provider.config.includeDefaultRoots, true,
+      "user-agents and project skills must remain discoverable after installation");
+    assert.equal(provider.config.customSkillDirs, undefined,
+      "the default DSH home root should not also be registered as a custom root");
+    assert(def.plugins.some((row) => row.id === "tool-skill"), "skill loader remains available");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("legacy template markers and incomplete presets never authorize a reset", () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "purge-preset-managed-"));
   try {
     installPreset({ home });
     const file = path.join(userPresetDir(home), "agent.cordis.yml");
-    // 模拟旧版本模板：仍是插件写的（带 marker），内容不同
+    // Ownership markers often survive user edits.
     fs.writeFileSync(file, "# managed-by: dsh-purge\nold template\n");
     const updated = installPreset({ home });
-    assert.equal(updated.action, "updated");
-    assert(fs.readFileSync(file, "utf8").includes("fetch: true"));
-    // 用户把它改成自己的一份（去掉 marker）后不再覆盖
+    assert.equal(updated.action, "kept");
+    assert.match(fs.readFileSync(file, "utf8"), /old template/);
+    fs.unlinkSync(file);
+    assert.equal(installPreset({ home }).action, "kept");
+    assert.equal(fs.existsSync(file), false);
     fs.writeFileSync(file, "# my own preset\n");
     assert.equal(installPreset({ home }).action, "kept");
   } finally {

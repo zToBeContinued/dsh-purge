@@ -1,3 +1,4 @@
+import { apiUrl } from "../api/client.js";
 // UI derived from YuJunZhiXue/dsh-purge 1.1.71 (MIT). See LICENSE.
 import { incompleteApplyDetail } from "../shared/apply-result.js";
 import { runtimeRepairDetails } from "../shared/runtime-error.js";
@@ -384,7 +385,7 @@ export function PurgifySection({ page = "status", onStatus } = {}) {
         setAskRestart(false);
         setNotice({ kind: "idle", text: "" });
         const applyContent = action === "apply" ? readPromptBox() : "";
-        fetch("/dsh-purge/" + action, {
+        fetch(apiUrl("/dsh-purge/" + action), {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(
@@ -597,7 +598,7 @@ export function PurgifySection({ page = "status", onStatus } = {}) {
   const waitHostAfterUninstall = useCallback((tr) => {
     const started = Date.now();
     const ping = () => {
-      fetch("/", { cache: "no-store", credentials: "same-origin" })
+      fetch(apiUrl("/"), { cache: "no-store", credentials: "same-origin" })
         .then((r) => {
           if (r.ok) {
             try {
@@ -695,6 +696,12 @@ export function PurgifySection({ page = "status", onStatus } = {}) {
     metricNotes.push(t("metric.pendingShort", { n: tally.pending }));
   if (tally.unmatched)
     metricNotes.push(t("metric.unmatchedShort", { n: tally.unmatched }));
+  if (tally.partial)
+    metricNotes.push(t("metric.partialShort", { n: tally.partial }));
+  if (tally.drifted)
+    metricNotes.push(t("metric.driftedShort", { n: tally.drifted }));
+  if (tally.disabled)
+    metricNotes.push(t("metric.disabledShort", { n: tally.disabled }));
   if (tally.skipped)
     metricNotes.push(t("metric.skipShort", { n: tally.skipped }));
 

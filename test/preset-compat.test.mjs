@@ -163,3 +163,56 @@ test("native activation failures unwind helpers; successful registration dispose
     "-" + defs[0].id,
   ]);
 });
+
+test("list_agents is adapted only for the verified merged provider in the same group", async t => {
+  const { adaptListAgents } = await import("../lib/preset-compat.js");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "preset-provider-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const name = "@deepseek-ai/dsh-tool-subagent-control";
+  const dir = path.join(root, "node_modules", name);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({name, version: "0.2.2-rc.1", exports: {".": "./index.js", "./package.json": "./package.json"}}));
+  fs.writeFileSync(path.join(dir, "index.js"), "");
+  const anchor = path.join(root, "package.json");
+  const main = {id:"control", name, disabled:false};
+  const legacy = {id:"tool-subagent-list-agents", name:name + "/list-agents", disabled:false};
+  function adapt(rows) {
+    const input = {plugins:[{name:"group", group:true, config:rows}]};
+    const copy = structuredClone(input);
+    const out = adaptListAgents(input, anchor);
+    assert.deepEqual(input, copy);
+    return out.plugins[0].config;
+  }
+  assert.deepEqual(adapt([main, legacy]), [main]);
+  for (const rows of [[legacy], [{...main,disabled:true}, legacy], [main,{...legacy,config:{}}], [main,main,legacy], [{...main,filter:"x"},legacy]]) {
+    assert.deepEqual(adapt(rows), rows);
+  }
+  const before = {plugins:[main, legacy]};
+  assert.equal(adaptListAgents(before, null), before);
+  const opaqueRoot = path.join(root, "opaque");
+  const opaquePackage = path.join(opaqueRoot, "node_modules", name);
+  fs.mkdirSync(opaquePackage, {recursive:true});
+  fs.writeFileSync(path.join(opaquePackage, "package.json"), JSON.stringify({name, exports:{".":"./index.js"}}));
+  assert.equal(adaptListAgents(before, path.join(opaqueRoot, "package.json")), before);
+});
+
+test("saved child IDs resolve after host rows move, with the same denied tools", async (t) => {
+  const {createHash} = await import("node:crypto");
+  const {withLegacyChildIds} = await import("../lib/preset-compat.js");
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "preset-history-"));
+  t.after(() => fs.rmSync(home, {recursive:true, force:true}));
+  const def = definition();
+  const old = migratePresetDefinition(def, { stableChildIds: true });
+  const p = old.policies[0];
+  const oldId = def.id + "-child-" + createHash("sha256").update(JSON.stringify({at:p.at, deny:p.deny})).digest("hex").slice(0,10);
+  backupPresetMigration({home,dir:bundledPresetDir(),id:def.id,policies:[{...p,childId:oldId}]});
+  def.plugins.unshift({name:"qa",id:"user-row"});
+  const next = migratePresetDefinition(def, { stableChildIds: true });
+  assert.equal(next.policies[0].childId,p.childId);
+  assert.notDeepEqual(next.policies[0].at,p.at);
+  const definitions = withLegacyChildIds(next,home);
+  assert.deepEqual(definitions.find(x => x.id === oldId).plugins,next.definitions[0].plugins);
+  assert.equal(spawn(definitions.at(-1)).config.agentPreset,p.childId);
+  spawn(def).config.toolFilter.deny.pop();
+  assert.ok(!withLegacyChildIds(migratePresetDefinition(def, { stableChildIds: true }),home).some(x => x.id === oldId));
+});

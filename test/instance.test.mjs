@@ -584,3 +584,53 @@ test("verified npm CLI shorthand selects its running profile when multiple profi
     assert.throws(() => resolveProfile(f.home, { env: {}, argv: ["node", f.cli, "plugin"] }), /无法唯一确定/);
   } finally { f.close(); }
 });
+
+test("packaged community diagnostics stay within verified Electron resources", () => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "purge-diagnostic-")));
+  const resources = path.join(root, "resources"), app = path.join(resources, "app");
+  const host = path.join(app, "node_modules/@deepseek-ai");
+  fs.mkdirSync(path.join(app,"lib"), {recursive:true});
+  fs.mkdirSync(host, {recursive:true});
+  fs.writeFileSync(path.join(app,"package.json"), JSON.stringify({name:"dsh-plugin-desktop",main:"lib/main.js",version:"2.0.18"}));
+  fs.writeFileSync(path.join(app,"lib/main.js"), "// fixture");
+  const options = {env:{}, argv:["electron", "--updated"], resourcesPath:resources, electron:"44.0.0"};
+  try {
+    assert.equal(currentHost(options), "", "write target must not change");
+    assert.equal(diagnosticHost(options), host);
+    assert.equal(diagnosticHost({...options,electron:false}), "");
+    assert.throws(() => diagnosticHost({...options,diskReader:{...fs,statSync(file){
+      if(file === host) throw Object.assign(Error("denied"),{code:"EACCES"});
+      return fs.statSync(file);
+    }}}), /denied/, "do not hide access errors by choosing another component root");
+    assert.equal(diagnosticHost({...options,env:{PURGE_DSH_CLI:path.join(root,"missing.js")}}), "");
+    assert.equal(diagnosticHost({...options,resourcesPath:path.join(root,"unrelated")}), "");
+    fs.rmSync(host,{recursive:true});
+    const sibling = path.join(resources,"app.asar.unpacked/node_modules/@deepseek-ai");
+    fs.mkdirSync(sibling,{recursive:true});
+    assert.equal(diagnosticHost(options), host, "partial preferred extraction must not borrow a healthy sibling");
+    assert.equal(fs.existsSync(host), false, "diagnostic lookup must not create files");
+  } finally { fs.rmSync(root,{recursive:true,force:true}); }
+});
+
+test("#93 a pnpm workspace junction selects only the CLI package that owns the running entry", () => {
+  const f = fixture();
+  try {
+    const cliRoot = path.join(f.root, "apps/cli");
+    fs.cpSync(path.dirname(path.dirname(f.cli)), cliRoot, { recursive: true });
+    const bin = path.join(cliRoot, "lib/bin.mjs");
+    const link = path.join(f.root, "node_modules/.pnpm/node_modules/@deepseek-ai/dsh");
+    fs.mkdirSync(path.dirname(link), { recursive: true });
+    fs.symlinkSync(cliRoot, link, "junction");
+    const launch = { env: {}, argv: ["node", path.join(link, "lib/bin.mjs")] };
+    assert.equal(currentHost(launch), cliRoot);
+    assert.equal(resolveDshCli(launch).cli, bin);
+    assert.equal(resolveDshCli({ aiBase: currentHost(launch), env: {} }).cli, bin);
+    fs.cpSync(path.dirname(path.dirname(f.cli)), path.join(cliRoot, "dsh"), { recursive: true });
+    fs.unlinkSync(bin);
+    assert.throws(() => resolveDshCli(launch), /无法定位/);
+    const outside = path.join(cliRoot, "linked-dir");
+    fs.symlinkSync(path.dirname(f.cli), outside, "junction");
+    fs.writeFileSync(path.join(cliRoot, "package.json"), JSON.stringify({ name: "@deepseek-ai/dsh", bin: "linked-dir/bin.mjs" }));
+    assert.throws(() => resolveDshCli(launch), /无法定位/);
+  } finally { f.close(); }
+});

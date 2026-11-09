@@ -1,7 +1,7 @@
 # AGENTS.md — 给 AI agent 的 Purge 使用说明书
 
 > 这份文件是写给**在 DSH 里干活的 agent** 的，不是营销文档。
-> 当前版本：**1.6.60** · 适配 DSH Desktop **0.2.1-rc.3**（rc.1 / rc.2 同样通过）
+> 当前版本：**1.6.86** · 适配 DSH Desktop **0.2.2-rc.1**（0.2.1-rc.1 / rc.2 / rc.3 / rc.5 同样通过）
 > 版本号由 `npm run check:docs` 与 `package.json` 校验，发版必须同步。
 
 ---
@@ -16,7 +16,7 @@
 
 | 层 | 由谁提供 | 生效方式 | 你能怎么查 |
 | --- | --- | --- | --- |
-| **宿主补丁**（80 条） | 本插件写进 DSH 源码 | 点「应用」写入 → **退出重开**才加载 | `selfcheck` 看各层 `applied/required` |
+| **宿主补丁**（86 条） | 本插件写进 DSH 源码 | 点「应用」写入 → **退出重开**才加载 | `selfcheck` 看各层 `applied/required` |
 | **提示词注入** | 插件运行时（每步重贴） | `prompt-inject.md` 作为 `dsh-purge` section | 探针（§4）或看 `selfcheck` 的「运行时提示词注入」 |
 | **破甲强化段** | 插件运行时 | 尾部 section（默认开） | `purge-community boost` |
 | **权限配置** | profile 的 `cordis.patch.yml` | `danger-full-access` + `approval: never` | `selfcheck` 的「当前 profile 的权限选择」 |
@@ -29,7 +29,7 @@
 ```
 通过官方界面/CLI 首次安装，或社区安装器备份迁移
    ↓
-点「应用」→ 解包 host / 写 80 条补丁 / 建快照
+点「应用」→ 解包 host / 写 86 条补丁 / 建快照
    ↓
 退出并重开 DSH   ← 补丁只有重启后才被加载
    ↓
@@ -86,7 +86,7 @@ purge-community probe new
 
 | 症状 | 先跑 | 判读 | 动作 |
 | --- | --- | --- | --- |
-| 补丁数不是 73/76（全量 80） | `selfcheck --json` | 看 `layers[].state` | pending → 点应用；broken → `diagnose` |
+| 补丁数不是 73/76（全量 84） | `selfcheck --json` | 看 `layers[].state` | pending → 点应用；broken → `diagnose` |
 | 全部 `missing_file` | `status` | `ai_base` 为空 | 宿主未解包：点应用 → 重开 |
 | 模型开始推脱/要求确认 | `probe new` | 回显否 | 回显：调人设/强化段；不回显：检查注入层 |
 | 工具被拒绝执行 | `selfcheck` | 沙箱/审批层是否绿 | 绿 → 属工具自身限制；红 → 点应用 |
@@ -104,12 +104,12 @@ purge-community probe new
 | `$DSH_HOME/dsh-purge-community/audit.jsonl` | 动作审计（1MB 轮转，保留 2 份）；面板「维护 → 最近动作」 |
 | `$DSH_HOME/dsh-purge/applied.json` · `installed-rev` | 上次应用的插件版本 |
 | `$DSH_HOME/dsh-purge-community/backups/<id>/` | 快照（`manifest.json` + 小文件；大文件在 `objects/`） |
-| `$DSH_HOME/.agent-presets/unrestricted/` | 无限制模式预设（首行 `# managed-by: dsh-purge` 时会被新版覆盖） |
+| `$DSH_HOME/.agent-presets/unrestricted/` | 无限制模式预设（升级保留原文；首行模板标记不代表用户授权覆盖） |
 | `$DSH_HOME/prompt-inject.md` | **用户的注入正文**，插件只读不改（除非用户点保存） |
 
 **不变量**：`prompt-inject.md`、规则集、其他插件配置，任何时候都不该被「应用」或「回滚」覆盖。
 
-## 7. 补丁表：80 条，怎么读、怎么加
+## 7. 补丁表：86 条，怎么读、怎么加
 
 - 定义在 `lib/core.js` 的 `ALL_PATCHES`（`PATCHES` / `CODE_PATCHES` / `ENGINE_PATCHES` / `NEW_TOOL_PATCHES`）。
 - 每条 = `{id, name, layer, file, replacements:[{pattern, replace}], markers, optional?}`；`pattern` 是对宿主源码的**精确片段**（或正则），`markers` 用来判断"已应用"。
@@ -133,10 +133,14 @@ purge-community probe new
 
 | 组件 | 值 |
 | --- | --- |
-| 插件 | `dsh-purge-community` 1.6.60 |
-| 已验证宿主 | DSH Desktop 0.2.1-rc.1 / 0.2.1-rc.2 / 0.2.1-rc.3 |
+| 插件 | `dsh-purge-community` 1.6.86 |
+| 已验证宿主 | DSH Desktop 0.2.2-rc.1 / 0.2.1-rc.1 / 0.2.1-rc.2 / 0.2.1-rc.3 / 0.2.1-rc.5 |
 | 其它宿主 | 允许应用，但 `selfcheck` 会标"未验证"；先看 `diagnose` |
-| Node | ≥18（桌面版自带运行时即可） |
+| Node | ≥18（桌面版自带运行时即可）；**红队工具需 ≥22.5**（依赖 `node:sqlite`，低版本会在加载红队工具时失败） |
+
+### 证据账本（1.6.81 起）
+
+口头报告用 `claimed` 并填写 `source_agent`。工具默认按 `inferred` 记录。用 `redteam_evidence_upgrade` 提交实际核实的结果；普通引用和旧版缺少核实记录的引用保留，需另行核实。计数或哈希报错时先处理账本异常。导入文件须位于当前靶标目录，可暂存在其 `incoming/` 子目录，也可以直接传截图内容。已撤回的问题可按 `withdrawn` 查询。
 
 ## 10. 这份文档的维护规则
 
@@ -156,7 +160,7 @@ Electron 的 app.asar 本体必须用 `diskFs()` 读取；不要把普通 Node �
 ## 12. 安装 / 更新失败：Agent 必读（1.6.47）
 
 1. **先选入口，不把社区脚本称为官方方法**。首次安装：DSH 官方插件界面/市场确认框，或该实例的 `dsh plugin --profile <实际名称> add <固定版本TGZ URL>`。官方管理器维护 `dsh.bundle`；我们的索引、TGZ 和 `scripts/install.sh` / `scripts/install.ps1` 是社区内容。本项目没有供此流程使用的裸 npm 包名，不运行 `add dsh-purge`、`add dsh-purge-community` 或全局 npm 安装。已有 `dsh-purge`/独立面板时选社区安装器迁移，不能先卸载旧包。完整可复制命令见 [README](README.md#安装) 与 [安装指南](docs/INSTALLATION.md)。
-2. 读取目标 DSH 版本、可执行文件、`DSH_HOME`、profile，先确认已经初始化。Desktop 默认 `desktop`，CLI/Web 示例为 `web`，不能混用；不要下载另一套 npx 宿主来安装到当前桌面实例。先下载脚本到独立临时路径，审阅后 dry-run，再按已有授权执行。dry-run 只验证前置条件、下载与 SHA256，不安装依赖、不验证完整启动。正式安装会备份、调用官方 CLI、迁移旧包引用并验证磁盘版本；它可能修复解包桌面的 `app/runtime` 链接，Linux 可能准备用户宿主副本，并非完全不写宿主目录。脚本与 bootstrap 来自 master，SHA256 校验的对象是发行 TGZ，不能声称脚本也经过独立签名校验。不改提示词、权限、代理、更新偏好或其他插件；不要安装后自动 apply/restart。
+2. 读取目标 DSH 版本、可执行文件、`DSH_HOME`、profile，先确认已经初始化。旧 Desktop CLI 默认 `desktop`，独立 dsh CLI 的新壳及 CLI/Web 默认为 `web`，不能混用；不要下载另一套 npx 宿主来安装到当前桌面实例。先下载脚本到独立临时路径，审阅后 dry-run，再按已有授权执行。dry-run 只验证前置条件、下载与 SHA256，不安装依赖、不验证完整启动。正式安装会备份、调用官方 CLI、迁移旧包引用并验证磁盘版本；它可能修复解包桌面的 `app/runtime` 链接，Linux 可能准备用户宿主副本，并非完全不写宿主目录。脚本与 bootstrap 来自 master，SHA256 校验的对象是发行 TGZ，不能声称脚本也经过独立签名校验。不改提示词、权限、代理、更新偏好或其他插件；不要安装后自动 apply/restart。
 3. `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION` 不是一律“发布太新”。若同时明确报 `@dsh-ops/bash-win32-x64@<版本> ... version not present in registry manifest`，先比较当前公开镜像与 npm 官方元数据。本版安装器仅对这一公开包、明确的公开镜像执行一次 scoped registry 重试；官方 name/version/time/integrity/tarball 不完整则停止。其余依赖保持原源，不改变全局设置。
 4. 市场 JSON 首次安装失败时插件尚未加载，插件运行时无法修复宿主安装器。先让用户选择 npm 官方源，或用独立安装入口。不要承诺“升级插件就能让旧宿主市场自动重试”；换 tgz 仍会触发宿主锁文件校验。
 5. 真实的发布时间不足、integrity/trust 错误、私有源、未知错误：保持失败，保留日志与快照；不要设 minimumReleaseAge=0、trustLockfile，也不要删锁文件、全局清缓存、修改全局 npm 源或把所有错误都归为镜像问题。GitHub `UND_ERR_DESTROYED` 是独立的网络线索，不能承诺换 npm 源会解决。
@@ -399,3 +403,112 @@ Windows Electron 的递归删除可能进入 Junction。清理使用 `removeTree
 维护锁不按超龄强删。新版通过非空互斥目录协调回收，并保留旧版识别的 maintenance.lock；确认进程已结束或 PID 被复用后才回收。活着的旧版长任务、跨机或不可读/无效锁继续阻止写入并给出诊断。丢锁时停止安装/回滚后续提交及 checkpoint 自动恢复，保留恢复目录，不能手工删除锁强行继续。
 
 #89 的 Windows 助手退出故障已在受控 Job Object 环境重建，尚未确认报告者现场的启动/Job 机制，本版不宣称已修复。操作边界及脚本见 [维护记录](docs/maintenance-issues-86-89.md)。不自动 apply/restart，不修改提示词、配置或代理。
+
+
+## 1.6.61：维护锁、子路径与更新通道
+
+维护锁使用完整元数据原子发布；不按年龄删除，也不擅自清除旧版遗留的空/损坏锁。`LOCK_UNREADABLE` 表示归属暂时无法读取，`LOCK_LOST` 表示锁记录缺失/变化；两者都停止后续写入。安装已验证提交后的清理失败作为明确的 `cleanup_warnings` 返回，保留现场，不反向覆盖已提交安装。释放失败保留互斥门，仅同一进程记录的原释放操作可重试。
+
+更新通道里的代理和 GitHub 密钥仅用于更新请求。留空继承已有更新环境，不等于强制直连；清除插件保存的密钥也不会删除外部环境变量。凭据保存到本机 `dsh-purge/update-channel.json`，不要提交或要求用户贴出。公开状态隐藏密钥和代理认证信息。配置损坏需报告，不能静默直连。SOCKS5 使用代理侧域名解析，TLS、来源限制和 SHA256 校验不变；不调整系统/模型代理。
+
+Web 子路径请求按实际插件脚本路径定位挂载点，根路径和桌面入口继续兼容。不为修复 404 扩大 Cookie 域或合并端口。预设恢复宿主原生技能目录发现，保留技能自身禁止模型调用的声明与用户自定义预设。未验证的第三方桌面、Cookie 修改、Windows 换包助手问题单独保持待确认，不据此宣称已修复。
+
+## 31. 讨论型 issue 不关闭（运维约定）
+
+- 用户自己发起的讨论、经验分享、提问帖（非 bug / 非重复诉求）**只回复，不关闭**。
+- 只有「已修复」「重复」「明确不在支持范围」的 bug/feature 才关闭，并在评论里写依据。
+- 关闭时若带说明，用 `gh issue close -c`；**纯评论**必须用 `gh issue comment --body/--body-file`，`-c` 在 comment 子命令上无效，会静默失败。
+
+## 1.6.63：漂移判定（取自上游 1.1.83 通用部分）
+
+- 目标文件存在、marker 不在、锚点全不中 → `drifted`（以前是 `skipped`，软成功、状态页假绿）。
+  `patchStatusReady("drifted")` 为 false，面板标「锚点漂移」，自检计入异常。
+- 自标记补丁（pattern 含 `[dsh-purge]`）与声明 `silentWhenMissing` 的补丁（#76）仍判 `skipped`。
+- `fileOptional` 的目标漂移不牵连整条补丁。
+- `ensureHostClean` 不再忽略 `pattern_not_found`。
+- 未取：NEXT 识别、allowBuilds/pnpm、cordis.patch 空 `[]`、子代理继承父预设（与 #53 契约冲突）、redteam 默认清理。
+
+## 1.6.64：expect 命中数契约与能力审计
+
+- `{ pattern, replace, expect: N }`：实际命中数不等于 N（含 0）时整条拒写，返回 `hitMismatch {patch_id, expected, actual, file}`；应用路径记为 `hit_mismatch:期望!=实际` 并计入未打上。
+- 真机探针 `test/expect-contract.test.mjs` 要求每个字面锚点在原始宿主（优先 `.dshpurge.bak`）里恰好出现一次；新增锚点必须收窄或声明 expect。
+- complete 模式注入段改为排在官方段之前（`[...dshPurgeSections, ...dshPurgeRest]`），旧宿主有专门迁移 pattern。
+- 审计口径：与上游 1.1.83 同名对比，72 条替换逐字一致，6 条为加强；上游独有的 #18/#19 是上下文保护（非闸），不启用。
+
+## DSH Store 提交与复检
+
+主插件申请必须使用 `GitHub repository: https://github.com/kingcharleslzy-ai/dsh-purge`、`Plugin path (optional): .`，不能因为表单提示根目录留空就省略。保留 `packages/purge-panel`；它不是本次安装目标。兼容信息从根 manifest 的 `dsh.compatibility` 读取，不把 README 范围或相邻版本推断写成精确 `compatible`。rc.4 和 alpha.2 尚为 unknown；rc.5 的作者声明依据与局限见 [DSH Store 说明](docs/DSH-STORE.md)。不得伪造固定 Commit 的 install/start/uninstall/rollback 证据，不为市场准入删功能或隐藏宿主维护能力。
+
+## 1.6.65：默认关闭的可选补丁（#18/#19）
+
+- 一条补丁可以声明 `disabledByDefault: true`；只有 `tuning.json` 的 `extraPatches` 列出它的 id 时才打。
+- CLI：`purge-community patches [list|enable 18,19|disable 19]`；开关后要**点一次「应用」**再退出重开。
+- 状态：`disabled` 表示"按选择关闭"，`patchStatusReady("disabled")` 为 true，自检计入明确不适用，不报红。
+- apply 汇总同口径：`disabled` 属于软通过（`ALWAYS_SOFT_STATUSES`），不计入 `failed`，于是面板不会在每次「应用」后报「N 项处理失败（#18,#19）」。真失败（写入错误、锚点不中）仍然计入。
+- 当前 opt-in 名单：
+  - **#18 重复调用提醒关闭**：收益是工具循环提示词干净；代价是模型可能在同一处反复试错而没人提醒。
+  - **#19 工具结果修剪关闭**：收益是能读到完整工具输出（大文件/长日志/完整 diff）；代价是上下文线性膨胀、更快触顶、更贵、长会话更容易答非所问。
+  - 两者都**不解锁任何门禁**，只改上下文管理；默认关闭。
+
+## 1.6.66：当前宿主诊断与 Windows 换包错误
+
+桌面进程仅带 `--updated` 时，只读诊断可检查该进程经包身份校验的 `resourcesPath`；不要据此扩大安装/写入目标，也不要全局扫描其他安装。运行入口可由 Electron `app.getAppPath()` 提供，但磁盘存在 `app` 不等于当前进程已加载。未知、跨实例、读取失败和真实缺失继续报出。
+
+Windows 换包仅对真实共享/锁冲突继续等待；其他错误保留 `detail`、HRESULT 和可用的 Win32 错误码。不要关闭 Defender、覆盖原备份或用自动重启掩盖失败。#118 的特定卡住原因仍待用户脱敏日志确认；本次不代表 #102 的 NEXT 桌面发行版完整兼容。详见 [验证记录](docs/host-diagnostics-118-119.md)。
+
+## 1.6.67：更新网络与凭据保护（#122）
+
+更新代理探测失败不代表 GitHub 已收到请求。Windows 先只读 `reg.exe`，必要时再用 PowerShell；不得自行关闭 TUN、改系统代理或忽略失败走直连。连接重置等瞬时错误最多重试两次，仍受原超时限制；HTTP、认证、证书、权限与 SHA256 错误要保留并处理根因。
+
+`update-channel.json` 的 token 不回显、不写日志；Windows 首次读取旧文件时收紧 DACL，新凭据在受保护文件创建后才写入。保护失败就报错，不降级成明文宽权限文件。不要删除旧配置、关 Defender 或加白名单来让更新显示成功。行为偏好、提示词、规则和宿主补丁不变，安装后不要自动重启。实测入口与限制见 [#122 维护说明](docs/update-channel-122.md)。
+
+## 1.6.69：恢复完整性、解包边界与生命周期
+
+- 空或非普通文件的宿主源码备份不能覆盖原文件；错误包含备份路径，失败备份保留。不要删除备份来伪造恢复成功。原子替换失败保留当前文件，权限沿用现有文件（目标不存在时沿用备份权限）。
+- ASAR 条目、数据范围或链接目标异常，解包整体失败并保留正在使用的安装。不得忽略越界条目、吞掉链接创建错误后继续换包。资源路径必须同时通过文字路径与真实链接目标校验。
+- 插件停用/卸载后旧回调失效，仅清理该实例自己的全局入口。旧实例不能清掉新实例的回调；用户提示词、配置及宿主磁盘补丁不因此删除。
+- `apply` / `revert` 的错误以非零退出码报告；先检查输出与失败项目，重启不能修复失败写入。主动关闭的可选项按既有口径处理，不新增误报。
+- 列表性能优化保持详情字段、顺序和既有长度上限；统计读取失败要保留错误，不能显示为零。
+- 维护者使用 `PURGE_ELECTRON_EXEC=<隔离运行时> npm run test:maintenance:electron`；没有显式运行时就停止，不回退到正式应用。验收范围及 Windows Defender 阻碍见 [维护记录](docs/maintenance-integrity-169.md)。本次维护者已知悉该阻碍并明确要求发布，发行说明保留未通过的实机验收；不能把此决定说成问题已修复，也不能关防护、加白名单或把组件测试说成完整通过。
+
+
+## 1.6.70：宿主诊断与模块迁移
+
+实例诊断统一从显式目标或当前进程入口取证，不扫描另一份安装顶替。未定位比较目标时报告 unknown_target；缺失组件、读取失败保留原证据。NEXT 是独立、未验证宿主家族，不能将包名识别或磁盘写入成功当成完整运行兼容证明。
+
+维护模块拆分保留既有导出；旧 settings 迁移所需函数与常量随调用方移动，未知模板仍停止并报告。#127 的 httpServer/webServer 契约问题未合入；不得自行添加未经验证的服务别名或将 HTTP 可连接当作消费者正常启动。
+
+升级沿用既有安装入口与数据目录，不改用户提示词、设置或预设，不自动重启。受影响 Windows 4090 的 Defender 完整回滚阻断仍未解决，见 [发行范围](docs/releases/1.6.70.md)。
+
+## 1.6.71：诊断计数与 0.2.2-rc.1 边界
+
+诊断面板明确显示 drifted、disabled 和 partial，计数初始化为零；不要将分母与已应用数的差值全部解释为功能损坏，也不要将漂移改为成功来消除告警。磁盘汇总与分组汇总使用不同展示粒度。
+
+0.2.2-rc.1 仍未完整适配。六项旧补丁 #14/#17/#60/#62/#67/#74 保持原定义，尚未修复。原生消息回合契约测试通过，但回调缺少 messages 的异常仍应暴露，不可吞掉错误或丢弃输入。实际测试范围、另外两条旧锚点和未确认事项见 [诊断记录](docs/maintenance-022-diagnostics.md)。不得自动应用补丁或重启用户 DSH。
+
+## 1.6.74：保留消息与普通提示词错误
+
+`PURGE_INVALID_PRE_STEP_DECISION` 表示回调返回的消息字段不符合契约，应定位该回调；不要补空数组假装本轮完成，也不要重放被拒绝的任务。提示词装配失败保留原始错误，不发送空提示词或清空工具列表。提供方恢复后可再次尝试正常请求。
+
+消息/提示词修复在插件运行层处理数据完整性。另修正 #67 的换行转义错误，只迁移已知损坏产物，不改原有消息长度条件。1.6.73 的宿主适配属于另一批改动，不属于这里的验证结论。普通提示词实际模块测试及边界见 [测试记录](docs/native-input-integrity.md)。不改用户配置，不自动应用或重启。
+
+### 旧入口导入失败：先定位，再保留配置迁移
+
+`Cannot find package 'dsh-purge'` 不能单凭包名判定重复安装。先核实报错进程使用的 home/profile、bundle、依赖别名和实际包 manifest/链接。旧依赖别名解析到社区包时仍受支持。
+
+如已确认手工 insert 与 bundle 入口重复，备份后逐字段保留原 config（包括提示词、未知项、false 和空字符串），合并为同 ID 配置覆盖；冲突或未知入口字段先停下核对。只移除那个已确认重复项，保留 insert 中其他插件，不按 dsh-purge-redteam 等前缀删除，不编辑已安装 bundle。原生错误仍在时按完整异常排查，不继续盲删。详见 [安装排障](docs/INSTALLATION.md#启动告警cannot-find-package-dsh-purge)。
+
+归档示例保留原文并紧邻警告。`check:docs` 解析 YAML fenced 示例，识别有/无引号的旧模块入口，不把普通提示词和报错文字当成安装入口；对应回归为 `test/install-docs.test.mjs`。迁移/回滚配置保留回归为 `test/market-migration.test.mjs`，均纳入默认测试。
+
+### 1.6.73 启动语法错误
+
+若核心 agent-loop 导入报 `Missing catch or finally after try`，先核对源文件是否含 #67 两行之间的字面反斜线 n。1.6.74 修正模板，并精确迁移这一处已知损坏产物；不得把所有反斜线 n 全局换成换行。修复前备份，之后对完整模块做语法检查。不要仅因有补丁 marker 就判成功，也不要为修这一个模块自动禁用所有第三方插件。此修复不改任何权限判断；不自动重启 DSH。
+
+## 1.6.75：目标安装、市场与镜像
+
+- #130：安装入口兼容旧 `dsh-desktop-host/lib/cli.js` 和由 `@deepseek-ai/dsh` manifest 声明的新 CLI。新壳存在 `harness-node-entry.mjs` 时沿用它。不要从 cwd、profile 依赖或用户目录找另一份宿主顶替；显式目标无效应报错。旧 CLI 默认 desktop，独立 dsh CLI 默认 web；已有自定义 profile 必须显式传入，不能搬运或重建用户配置。
+- 归档的只读识别与可写目标分开：`sealed_host:true` 表示 app.asar 已定位但还未解包，不等于补丁已加载。已有 app 目录缺组件时仍报告缺失，不用归档的健康文件掩盖故障。识别宿主不等于所有补丁已适配。
+- #132：`mirrorUrl` 存于现有 update-channel.json，可填完整 HTTPS 前缀或 `gh-proxy.org`；这是可选通道，不默认启用任何公共服务。显式空值关闭镜像；旧文件未声明则继承 PURGE_GH_MIRROR。代理与镜像可以并用，只影响更新请求。
+- 镜像覆盖发行查询、raw 元数据和归档传输；GitHub Token 不发送给镜像或镜像引发的重定向。安装前官方 API digest / SHA256SUMS 必须通过 GitHub（可走现有更新代理）取得；失败停止安装，不能把镜像同时提供的包和摘要当作独立来源证明，也不能关闭 TLS/SHA256。
+- #137：市场索引逐发行读取 manifest.dsh.compatibility.dsh；历史未声明版本保留原有限定。刷新索引即可读取新范围，不需要卸载插件、改用户兼容豁免或重启应用。
+- 本次不改宿主补丁定义，不改用户设置，不自动 apply/restart。隔离安装测试不代表模型行为或全部 GUI 功能验收。

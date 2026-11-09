@@ -319,7 +319,7 @@ test("release checksum failure stops before installation", async () => {
   try {
     globalThis.fetch = async (url) =>
       new Response(
-        String(url).endsWith("sums")
+        String(url).endsWith("SHA256SUMS.txt")
           ? "0".repeat(64) + "  " + PACKAGE + "-1.2.0.tgz"
           : "wrong bytes",
       );
@@ -327,8 +327,8 @@ test("release checksum failure stops before installation", async () => {
       installRelease(f.manager, {
         ref: "v1.2.0",
         version: "1.2.0",
-        asset: "https://github.com/fixture/asset",
-        sums: "https://github.com/fixture/sums",
+        asset: "https://github.com/kingcharleslzy-ai/dsh-purge/releases/download/v1.2.0/dsh-purge-community-1.2.0.tgz",
+        sums: "https://github.com/kingcharleslzy-ai/dsh-purge/releases/download/v1.2.0/SHA256SUMS.txt",
       }, globalThis.fetch),
       /SHA256/,
     );
@@ -607,4 +607,45 @@ test('rollback ownership loss never restores over a new writer', async () => {
     assert.equal(fs.readFileSync(path.join(f.manager.base,'maintenance.lock'),'utf8'),'replacement-owner');
     assert(f.manager.list().some(item=>item.id===backup.id));
   } finally { f.close(); }
+});
+
+test('missing CLI preflight stops before profile installation or checkpoint mutation',async()=>{
+ const f=setup();try {
+  const before=fs.readFileSync(path.join(f.profile,'package.json'));
+  f.manager.preflight=()=>{throw Error('fixture CLI unavailable');};
+  await assert.rejects(f.manager.install(f.candidate),/fixture CLI unavailable/);
+  assert.deepEqual(fs.readFileSync(path.join(f.profile,'package.json')),before);
+  assert.equal(f.installs.length,0);
+  assert(!fs.existsSync(path.join(f.manager.base,'install-recovery')));
+ } finally {fs.rmSync(f.home,{recursive:true,force:true});}
+});
+
+test("failed migration restores exact disabled profile and floating dependency", async t => {
+  const fixture = setup();
+  t.after(fixture.close);
+  const manifest = path.join(fixture.profile, "package.json");
+  const previous = JSON.parse(fs.readFileSync(manifest));
+  previous.dependencies[PACKAGE] = "https://github.com/kingcharleslzy-ai/dsh-purge/releases/latest/download/dsh-purge-community.tgz";
+  previous.dsh.profile.bundles = ["unrelated-plugin"];
+  const original = JSON.stringify(previous, null, 2);
+  fs.writeFileSync(manifest, original);
+  fixture.manager.installer = async () => {
+    assert.match(JSON.parse(fs.readFileSync(manifest)).dependencies[PACKAGE], /^file:/);
+    throw Error("fixture installer failure");
+  };
+  await assert.rejects(fixture.manager.install(fixture.candidate), /fixture installer failure/);
+  assert.equal(fs.readFileSync(manifest, "utf8"), original);
+  assert.equal(fs.readFileSync(path.join(fixture.profile, "cordis.patch.yml"), "utf8"), "PRIVATE CURRENT SETTINGS");
+});
+
+test("an installer can initialize a fresh profile manifest", async t => {
+  const fixture = setup();
+  t.after(fixture.close);
+  const manifest = path.join(fixture.profile, "package.json");
+  fs.unlinkSync(manifest);
+  fixture.manager.installer = async () => {
+    fs.writeFileSync(manifest, JSON.stringify({private:true}));
+  };
+  await fixture.manager.install(fixture.candidate);
+  assert.deepEqual(JSON.parse(fs.readFileSync(manifest)).dsh.profile.bundles, [PACKAGE]);
 });

@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { ALL_PATCHES } from "../lib/core.js";
+import { ALL_PATCHES, patchEnabled } from "../lib/core.js";
 
 const GATE_FINGERPRINTS = {
   5: "13e205e4c8f319e3",
@@ -16,10 +16,11 @@ const GATE_FINGERPRINTS = {
   11: "f732bb54043fe3f6",
   12: "e7e94c2c5d5d6e0f",
   13: "eac61898ab7bddde",
-  14: "8a7c12ba2de85245",
+  14: "7aec29a1b4b82ddb",
   15: "68bd19d2e61b65bb",
   16: "9698a6c3b4e9e7ba",
-  17: "975df12b54173ecb",
+  // rc.5 has its own editIntent body instead of the shared edit/delete method.
+  17: "19bdb473d05f28c9",
   30: "c844cddcc7933514",
   31: "f80165c28dc19a5e",
   34: "1ecd46f5b4067b0f",
@@ -27,10 +28,13 @@ const GATE_FINGERPRINTS = {
   36: "fd8e27dd7b1b21b3",
   59: "fc2fc00d258210b1",
   60: "9e13ac2da676e434",
-  61: "c17dcb85eded7e36",
+  // Accept the same native sentence after #93 has removed its branding.
+  61: "c175ed1d70acf41d",
   63: "b92dd05efb4ba817",
   66: "a97a223234457fee",
-  67: "8cfd0fd1a4e97f0a",
+  // 1.6.74: correct the literal newline escape and migrate only its malformed
+  // output; the two existing message-length conditions are unchanged.
+  67: "1cb9cbbaf23fb2d8",
   68: "2590e742617f1242",
 };
 
@@ -60,8 +64,13 @@ test("all 25 bypass gates exist with unchanged semantics", () => {
   assert.deepEqual(problems, [], problems.join("; "));
 });
 
-test("quality-reducing patches stay removed", () => {
-  const ids = ALL_PATCHES.map((p) => p.id);
-  assert(!ids.includes(18), "repeat-tool reminder must not be disabled again");
-  assert(!ids.includes(19), "tool-result pruning must not be disabled again");
+test("quality-reducing patches stay opt-in and off by default", () => {
+  // #18/#19 关闭的是上下文保护（重复调用提醒、工具结果修剪），不是门禁。
+  // 它们以 disabledByDefault 形态存在：能显式打开，但默认绝不写入宿主。
+  for (const id of [18, 19]) {
+    const patch = ALL_PATCHES.find((p) => p.id === id);
+    assert.ok(patch, `#${id} should exist as an opt-in patch`);
+    assert.equal(patch.disabledByDefault, true, `#${id} must stay off by default`);
+    assert.equal(patchEnabled(patch, []), false, `#${id} must not apply without an explicit opt-in`);
+  }
 });
